@@ -44,6 +44,104 @@ body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14
 </style>
 </head>
 <body>
+<!-- ===== Login (Firebase Authentication, e-mail e senha) ===== -->
+<style>
+body.kls-locked>*:not(#klsAuth){display:none!important}
+#klsAuth{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px 16px;overflow:auto;font-family:var(--f-body);color:var(--fg)}
+#klsAuth[hidden]{display:none!important}
+.ka-card{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px 22px;display:flex;flex-direction:column;gap:14px}
+.ka-logo{font:700 30px var(--f-display);letter-spacing:.02em;text-align:center}.ka-logo span{color:var(--gold)}
+.ka-sub{font-size:13px;color:var(--muted);text-align:center;margin-top:-8px}
+.ka-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:12px;background:var(--panel2)}
+.ka-tabs button{font:600 14px var(--f-body);border:0;border-radius:9px;padding:10px;background:none;color:var(--muted);cursor:pointer}
+.ka-tabs button.on{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.ka-f{display:flex;flex-direction:column;gap:5px}.ka-f label{font-size:12px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.ka-f input{font:500 16px var(--f-body);padding:12px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);outline:none}
+.ka-f input:focus{border-color:var(--gold)}
+.ka-btn{font:600 15px var(--f-body);border:0;border-radius:11px;padding:13px;background:var(--gold);color:#000;cursor:pointer}
+.ka-btn:disabled{opacity:.6}
+.ka-link{font:500 13px var(--f-body);background:none;border:0;color:var(--gold);cursor:pointer;padding:2px;align-self:center}
+.ka-msg{font-size:13px;line-height:1.45;border-radius:10px;padding:10px 12px;background:var(--panel2)}
+.ka-msg.err{color:var(--bear);background:var(--bear-soft)}.ka-msg.ok{color:var(--bull);background:var(--bull-soft)}
+#klsUser{position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:9000;display:flex;align-items:center;gap:8px;font:500 12px var(--f-body);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:5px 6px 5px 12px;color:var(--muted);max-width:80vw}
+#klsUser span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#klsUser button{font:600 12px var(--f-body);border:0;border-radius:14px;padding:5px 10px;background:var(--panel2);color:var(--fg);cursor:pointer}
+</style>
+<div id="klsAuth" hidden>
+  <form class="ka-card" id="kaForm" novalidate>
+    <div class="ka-logo">XAU/<span>KLS</span></div>
+    <div class="ka-sub" id="kaSub">Entre para acessar o app</div>
+    <div class="ka-tabs" id="kaTabs"><button type="button" data-m="in" class="on">Entrar</button><button type="button" data-m="up">Criar conta</button></div>
+    <div class="ka-f" id="kaNameF" hidden><label for="kaName">Nome</label><input id="kaName" autocomplete="name"></div>
+    <div class="ka-f"><label for="kaEmail">E-mail</label><input id="kaEmail" type="email" autocomplete="email" inputmode="email" required></div>
+    <div class="ka-f" id="kaPassF"><label for="kaPass">Senha</label><input id="kaPass" type="password" autocomplete="current-password" minlength="6" required></div>
+    <div class="ka-f" id="kaPass2F" hidden><label for="kaPass2">Repita a senha</label><input id="kaPass2" type="password" autocomplete="new-password"></div>
+    <div class="ka-msg" id="kaMsg" hidden></div>
+    <button class="ka-btn" id="kaGo" type="submit">Entrar</button>
+    <button class="ka-link" id="kaForgot" type="button">Esqueci a senha</button>
+    <button class="ka-link" id="kaResend" type="button" hidden>Reenviar e-mail de confirmação</button>
+    <button class="ka-link" id="kaOut" type="button" hidden>Usar outra conta</button>
+  </form>
+</div>
+<div id="klsUser" hidden><span id="klsUserMail"></span><button type="button" id="klsLogout">Sair</button></div>
+<script>
+/* Cole aqui o firebaseConfig do seu projeto. Enquanto estiver null, o app abre sem login. */
+const KLS_FIREBASE=null;
+(function(){
+  if(!KLS_FIREBASE) return;
+  const $=id=>document.getElementById(id), box=$('klsAuth');
+  document.body.classList.add('kls-locked'); box.hidden=false;
+  let mode='in';
+  const ERR={'auth/invalid-email':'E-mail inválido.','auth/missing-password':'Digite a senha.','auth/weak-password':'A senha precisa ter pelo menos 6 caracteres.',
+    'auth/email-already-in-use':'Esse e-mail já tem conta. Toque em "Entrar".','auth/invalid-credential':'E-mail ou senha incorretos.','auth/wrong-password':'E-mail ou senha incorretos.',
+    'auth/user-not-found':'Não existe conta com esse e-mail.','auth/user-disabled':'Essa conta foi bloqueada pelo administrador.','auth/too-many-requests':'Muitas tentativas. Espere alguns minutos.',
+    'auth/network-request-failed':'Sem conexão com a internet.','auth/unauthorized-domain':'Este site não está autorizado no Firebase (Domínios autorizados).'};
+  const msg=(t,k)=>{ const m=$('kaMsg'); m.hidden=!t; m.textContent=t||''; m.className='ka-msg'+(k?' '+k:''); };
+  const busy=b=>{ $('kaGo').disabled=b; };
+  function setMode(m){ mode=m; msg('');
+    document.querySelectorAll('#kaTabs button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+    $('kaTabs').hidden=m==='verify'; $('kaNameF').hidden=m!=='up'; $('kaPass2F').hidden=m!=='up'; $('kaPassF').hidden=m==='verify';
+    $('kaEmail').closest('.ka-f').hidden=m==='verify'; $('kaForgot').hidden=m!=='in'; $('kaResend').hidden=m!=='verify'; $('kaOut').hidden=m!=='verify';
+    $('kaPass').autocomplete=m==='up'?'new-password':'current-password';
+    $('kaGo').textContent=m==='up'?'Criar conta':m==='verify'?'Já confirmei':'Entrar';
+    $('kaSub').textContent=m==='up'?'Crie sua conta de estudo':m==='verify'?'Confirme seu e-mail':'Entre para acessar o app'; }
+  $('kaTabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) setMode(b.dataset.m); });
+  function load(src){ return new Promise((ok,no)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=no; document.head.appendChild(s); }); }
+  const V='10.14.1', G='https://www.gstatic.com/firebasejs/'+V+'/', J='https://cdn.jsdelivr.net/npm/firebase@'+V+'/';
+  const libs=base=>load(base+'firebase-app-compat.js').then(()=>load(base+'firebase-auth-compat.js'));
+  msg('Carregando…');
+  (window.firebase&&firebase.auth?Promise.resolve():libs(G).catch(()=>libs(J))).then(()=>{
+    if(!firebase.apps.length) firebase.initializeApp(KLS_FIREBASE);
+    const auth=firebase.auth(); auth.languageCode='pt';
+    msg('');
+    auth.onAuthStateChanged(u=>{
+      if(u&&u.emailVerified){ box.hidden=true; document.body.classList.remove('kls-locked'); $('klsUser').hidden=false; $('klsUserMail').textContent=u.displayName||u.email; window.dispatchEvent(new Event('resize')); }
+      else { box.hidden=false; document.body.classList.add('kls-locked'); $('klsUser').hidden=true;
+        if(u){ setMode('verify'); msg('Enviamos um link de confirmação para '+u.email+'. Abra o e-mail (veja também o spam), toque no link e depois toque em "Já confirmei".','ok'); }
+        else if(mode==='verify') setMode('in'); }
+    });
+    $('kaForm').addEventListener('submit',async e=>{ e.preventDefault(); msg(''); busy(true);
+      const em=$('kaEmail').value.trim(), pw=$('kaPass').value;
+      try{
+        if(mode==='in'){ await auth.signInWithEmailAndPassword(em,pw); }
+        else if(mode==='up'){
+          if(pw!==$('kaPass2').value){ msg('As senhas não são iguais.','err'); return; }
+          const c=await auth.createUserWithEmailAndPassword(em,pw); const nm=$('kaName').value.trim();
+          if(nm) await c.user.updateProfile({displayName:nm});
+          await c.user.sendEmailVerification(); setMode('verify');
+          msg('Conta criada! Enviamos um link de confirmação para '+em+'. Abra o e-mail (veja também o spam), toque no link e depois toque em "Já confirmei".','ok'); }
+        else { await auth.currentUser.reload(); if(auth.currentUser.emailVerified){ location.reload(); } else msg('Ainda não confirmado. Toque no link do e-mail e tente de novo.','err'); }
+      }catch(x){ msg(ERR[x.code]||('Erro: '+(x.message||x)),'err'); }
+      finally{ busy(false); } });
+    $('kaForgot').addEventListener('click',async()=>{ const em=$('kaEmail').value.trim(); if(!em){ msg('Digite seu e-mail acima e toque em "Esqueci a senha".','err'); return; }
+      try{ await auth.sendPasswordResetEmail(em); msg('Se existir conta com '+em+', enviamos um link para criar uma nova senha.','ok'); }catch(x){ msg(ERR[x.code]||x.message,'err'); } });
+    $('kaResend').addEventListener('click',async()=>{ try{ await auth.currentUser.sendEmailVerification(); msg('E-mail reenviado para '+auth.currentUser.email+'.','ok'); }catch(x){ msg(ERR[x.code]||x.message,'err'); } });
+    $('kaOut').addEventListener('click',()=>auth.signOut());
+    $('klsLogout').addEventListener('click',()=>{ if(confirm('Sair da conta?')) auth.signOut(); });
+  }).catch(()=>msg('Não foi possível carregar o login. Verifique a internet e recarregue a página.','err'));
+})();
+</script>
+<!-- ===== fim do login ===== -->
 
 <div class="apps"><div class="assets" hidden>
   <button data-asset="gold" role="tab"><b>GOLD</b> · Ouro · TVC</button>
