@@ -1503,7 +1503,10 @@ const INST={data:'09/10/2026',
          ['Wells Fargo',5000,'fim de 2026','US$ 5.400–5.600 no fim de 2027','ago']],
   cb:[['China (PBoC)','+21 t em setembro, maior compra mensal em 3 anos','23º mês seguido comprando · reserva de 2.196 t'],
       ['Bancos centrais (mundo)','+39 t em agosto','+170 t no ano até agosto'],
-      ['Polônia','+98 t no ano, maior comprador','reserva de 648 t, meta de 700 t']],
+      ['Polônia','+98 t no ano, maior comprador','reserva de 648 t, meta de 700 t'],
+      ['Brasil (BCB)','0 t em 2026 · parado','comprou ~43 t entre set e nov/2025, primeiras compras desde 2021 · reserva de 172 t',''],
+      ['EUA (Tesouro/Fed)','0 t · sem compras nem vendas','maior reserva do mundo: 8.133 t, estável há décadas',''],
+      ['Canadá','0 t · sem reserva','vendeu todo o ouro até 2016 e não voltou a comprar','']],
   etf:[['ETFs de ouro (mundo)','+US$ 10 bi em setembro (+67 t)','recorde de US$ 31 bi no 3º tri · estoque recorde de 4.256 t']],
   risk:'Juros: se o Fed voltar a subir juros, o JPMorgan vê o ouro podendo testar US$ 3.500–3.600. Dólar perto da máxima de 18 meses também pesa.'};
 
@@ -1513,7 +1516,8 @@ const INST_SERIES={meses:['dez','jan','fev','mar','abr','mai','jun','jul','ago',
    {nome:'China (PBoC)',cor:'#e5484d',v:[0,1,2,7,15,25,40,60,80,101],nota:'compras mensais do banco central chinês'},
    {nome:'Ásia Central',cor:'#3e8ef7',v:[0,null,null,null,null,null,68,68,83,null],nota:'Uzbequistão + Cazaquistão'},
    {nome:'Bancos centrais (mundo)',cor:'#a970ff',v:[0,null,null,null,15,56,107,130,170,null],nota:'líquido de compras e vendas, inclui China'},
-   {nome:'Fundos/bancos (ETFs)',cor:'#d4a017',v:[0,null,147,null,null,92,16,39,160,227],nota:'variação do estoque de ouro dos ETFs'}]};
+   {nome:'Fundos/bancos (ETFs)',cor:'#d4a017',v:[0,null,147,null,null,92,16,39,160,227],nota:'variação do estoque de ouro dos ETFs'},
+   {nome:'Brasil (BCB)',cor:'#30a46c',v:[0,0,0,0,0,0,0,0,0,null],nota:'sem compras em 2026; reserva de 172 t'}]};
 function instChart(){
   const L=INST_SERIES.linhas, M=INST_SERIES.meses, W=360,H=210,pl=30,pr=96,pt=12,pb=24;
   let mx=0; L.forEach(l=>l.v.forEach(x=>{ if(x!=null&&x>mx) mx=x; })); mx=Math.ceil(mx/50)*50;
@@ -1534,6 +1538,35 @@ function instChart(){
     '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Compras de ouro acumuladas em 2026 por instituição">'+g+'</svg>'+
     '<div class="lgs">'+leg+'</div>'+
     '<div class="msg">Linha subindo = instituição comprando; descendo = vendendo. Tracejado = meses sem dado publicado. A China acelerou desde abril e já soma +101 t no ano; os ETFs venderam entre março e junho e voltaram a comprar forte de julho a setembro.</div></div>';
+}
+// volume vendido x comprado (agressão) candle a candle, com média EMA 9
+function sellVol(B){
+  const N=Math.min(60,B.length), seg=B.slice(-N), k=2/10;
+  let es=null,eb=null; const ES=[],EB=[];
+  // aquece a EMA com os candles anteriores
+  const warm=B.slice(Math.max(0,B.length-N-30),B.length-N);
+  warm.concat(seg).forEach((b,i)=>{ const s=b.v-b.tb, u=b.tb; es=es==null?s:es+k*(s-es); eb=eb==null?u:eb+k*(u-eb); if(i>=warm.length){ES.push(es);EB.push(eb);} });
+  const W=360,H=170,pl=34,pr=70,pt=10,pb=20, sv=seg.map(b=>b.v-b.tb);
+  let mx=Math.min(Math.max(...sv),Math.max(...ES,...EB)*2.5)||1; const X=i=>pl+(i+.5)*(W-pl-pr)/N, Y=v=>pt+(1-v/mx)*(H-pt-pb), bw=Math.max(1,(W-pl-pr)/N*.7);
+  const nf=v=>v>=1000?(v/1000).toFixed(1).replace('.',',')+'k':v>=10?Math.round(v)+'':v.toFixed(1).replace('.',',');
+  let g='';
+  [0,.5,1].forEach(f=>{ const v=mx*f; g+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--line)"/><text x="'+(pl-4)+'" y="'+(Y(v)+3)+'" text-anchor="end" font-size="8.5" fill="var(--muted)">'+nf(v)+'</text>'; });
+  sv.forEach((v,i)=>{ v=Math.min(v,mx); g+='<rect x="'+(X(i)-bw/2)+'" y="'+Y(v)+'" width="'+bw+'" height="'+(Y(0)-Y(v))+'" fill="#e5484d" opacity=".28"/>'; });
+  const line=(A,c)=>'<polyline fill="none" stroke="'+c+'" stroke-width="2.2" stroke-linejoin="round" points="'+A.map((v,i)=>X(i).toFixed(1)+','+Y(v).toFixed(1)).join(' ')+'"/>';
+  g+=line(EB,'#30a46c')+line(ES,'#e5484d');
+  const ls=ES[N-1], lb=EB[N-1]; let y1=Y(ls), y2=Y(lb); if(Math.abs(y1-y2)<20){ if(y1<y2) y2=y1+20; else y1=y2+20; }
+  g+='<text x="'+(W-pr+6)+'" y="'+(y1+3)+'" font-size="9.5" font-weight="700" fill="#e5484d">Venda '+nf(ls)+'</text>';
+  g+='<text x="'+(W-pr+6)+'" y="'+(y2+3)+'" font-size="9.5" font-weight="700" fill="#30a46c">Compra '+nf(lb)+'</text>';
+  [0,Math.floor(N/2),N-1].forEach(i=>{ g+='<text x="'+X(i)+'" y="'+(H-6)+'" text-anchor="middle" font-size="8" fill="var(--muted)">'+(S.tf<86400?seg[i].t.slice(-5):seg[i].t.slice(0,5))+'</text>'; });
+  // tendência da venda: EMA agora vs 10 candles atrás
+  const back=ES[Math.max(0,N-11)], ch=back?(ls/back-1)*100:0;
+  const st=ls>lb*1.1?['dn','Vendedores no controle']:lb>ls*1.1?['up','Compradores no controle']:['','Equilíbrio'];
+  const totS=sv.reduce((a,b)=>a+b,0), totB=seg.reduce((a,b)=>a+b.tb,0);
+  return '<div class="ibox"><div class="lab">Volume vendido · EMA 9 · últimos '+N+' candles de '+tfName(S.tf)+'</div>'+
+    '<div class="ival '+st[0]+'">'+st[1]+' <small>venda '+(ch>=0?'subindo ':'caindo ')+(ch>=0?'+':'')+ch.toFixed(0)+'% em 10 candles</small></div>'+
+    '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Volume vendido e comprado por candle">'+g+'</svg>'+
+    '<div class="lgs"><span class="lg"><i style="background:#e5484d"></i><b>Volume vendido</b> <span class="msg">· barras = cada candle; linha = média EMA 9</span></span><span class="lg"><i style="background:#30a46c"></i><b>Volume comprado</b> <span class="msg">· média EMA 9</span></span></div>'+
+    '<div class="msg">No período: <b class="dn">'+nf(totS)+' vendidos</b> × <b class="up">'+nf(totB)+' comprados</b> (em onças, a mercado). Linha vermelha acima da verde e subindo = pressão vendedora, que favorece os sinais de venda.</div></div>';
 }
 function renderInst(){
   const box=$('instBox'); if(!box) return;
@@ -1556,10 +1589,10 @@ function renderInst(){
   box.innerHTML=
    '<div class="ibox"><div class="lab">Resumo</div><div class="ival '+bias[0]+'">'+bias[1]+'</div>'+
    '<div class="msg">A mediana das projeções dos grandes bancos para o fim de 2026 é <b>US$ '+f0(med)+'</b>, '+(up>=0?'+':'')+up.toFixed(1).replace('.',',')+'% sobre o preço atual (US$ '+f0(price)+'). Bancos centrais, com a China à frente, e ETFs seguem comprando. '+INST.risk+'</div></div>'+
-   instChart()+flow+
+   flow+(hasV?sellVol(B):'')+instChart()+
    '<div class="ibox"><div class="lab">Projeções dos bancos</div><div style="overflow-x:auto"><table class="dtab itab"><thead><tr><th>Banco</th><th>Alvo</th><th>vs. agora</th><th>Prazo</th></tr></thead><tbody>'+
      INST.banks.map(b=>{ const d=(b[1]/price-1)*100; return '<tr><td>'+b[0]+'<div class="msg" style="white-space:normal">'+b[3]+' · revisado '+b[4]+'</div></td><td>'+f0(b[1])+'</td><td class="'+(d>=0?'up':'dn')+'">'+(d>=0?'+':'')+d.toFixed(1).replace('.',',')+'%</td><td style="white-space:normal">'+b[2]+'</td></tr>'; }).join('')+'</tbody></table></div></div>'+
-   '<div class="ibox"><div class="lab">Bancos centrais e governos</div>'+INST.cb.map(c=>'<div class="irow2"><b>'+c[0]+'</b><span class="up">'+c[1]+'</span><span class="msg">'+c[2]+'</span></div>').join('')+'</div>'+
+   '<div class="ibox"><div class="lab">Bancos centrais e governos</div>'+INST.cb.map(c=>'<div class="irow2"><b>'+c[0]+'</b><span class="'+(c[3]!=null?c[3]:'up')+'">'+c[1]+'</span><span class="msg">'+c[2]+'</span></div>').join('')+'</div>'+
    '<div class="ibox"><div class="lab">Fundos (ETFs)</div>'+INST.etf.map(c=>'<div class="irow2"><b>'+c[0]+'</b><span class="up">'+c[1]+'</span><span class="msg">'+c[2]+'</span></div>').join('')+'</div>'+
    '<div class="note">Dados de bancos, bancos centrais e ETFs atualizados em '+INST.data+' (fontes: World Gold Council, banco central da China via Kitco, London Gold Exchange). O fluxo da Binance é ao vivo. Projeções de bancos erram com frequência: use como contexto, não como sinal.</div>';
 }
@@ -2460,7 +2493,10 @@ const INST={data:'09/10/2026',
          ['Wells Fargo',5000,'fim de 2026','US$ 5.400–5.600 no fim de 2027','ago']],
   cb:[['China (PBoC)','+21 t em setembro, maior compra mensal em 3 anos','23º mês seguido comprando · reserva de 2.196 t'],
       ['Bancos centrais (mundo)','+39 t em agosto','+170 t no ano até agosto'],
-      ['Polônia','+98 t no ano, maior comprador','reserva de 648 t, meta de 700 t']],
+      ['Polônia','+98 t no ano, maior comprador','reserva de 648 t, meta de 700 t'],
+      ['Brasil (BCB)','0 t em 2026 · parado','comprou ~43 t entre set e nov/2025, primeiras compras desde 2021 · reserva de 172 t',''],
+      ['EUA (Tesouro/Fed)','0 t · sem compras nem vendas','maior reserva do mundo: 8.133 t, estável há décadas',''],
+      ['Canadá','0 t · sem reserva','vendeu todo o ouro até 2016 e não voltou a comprar','']],
   etf:[['ETFs de ouro (mundo)','+US$ 10 bi em setembro (+67 t)','recorde de US$ 31 bi no 3º tri · estoque recorde de 4.256 t']],
   risk:'Juros: se o Fed voltar a subir juros, o JPMorgan vê o ouro podendo testar US$ 3.500–3.600. Dólar perto da máxima de 18 meses também pesa.'};
 
@@ -2470,7 +2506,8 @@ const INST_SERIES={meses:['dez','jan','fev','mar','abr','mai','jun','jul','ago',
    {nome:'China (PBoC)',cor:'#e5484d',v:[0,1,2,7,15,25,40,60,80,101],nota:'compras mensais do banco central chinês'},
    {nome:'Ásia Central',cor:'#3e8ef7',v:[0,null,null,null,null,null,68,68,83,null],nota:'Uzbequistão + Cazaquistão'},
    {nome:'Bancos centrais (mundo)',cor:'#a970ff',v:[0,null,null,null,15,56,107,130,170,null],nota:'líquido de compras e vendas, inclui China'},
-   {nome:'Fundos/bancos (ETFs)',cor:'#d4a017',v:[0,null,147,null,null,92,16,39,160,227],nota:'variação do estoque de ouro dos ETFs'}]};
+   {nome:'Fundos/bancos (ETFs)',cor:'#d4a017',v:[0,null,147,null,null,92,16,39,160,227],nota:'variação do estoque de ouro dos ETFs'},
+   {nome:'Brasil (BCB)',cor:'#30a46c',v:[0,0,0,0,0,0,0,0,0,null],nota:'sem compras em 2026; reserva de 172 t'}]};
 function instChart(){
   const L=INST_SERIES.linhas, M=INST_SERIES.meses, W=360,H=210,pl=30,pr=96,pt=12,pb=24;
   let mx=0; L.forEach(l=>l.v.forEach(x=>{ if(x!=null&&x>mx) mx=x; })); mx=Math.ceil(mx/50)*50;
@@ -2516,7 +2553,7 @@ function renderInst(){
    instChart()+flow+
    '<div class="ibox"><div class="lab">Projeções dos bancos</div><div style="overflow-x:auto"><table class="dtab itab"><thead><tr><th>Banco</th><th>Alvo</th><th>vs. agora</th><th>Prazo</th></tr></thead><tbody>'+
      INST.banks.map(b=>{ const d=(b[1]/price-1)*100; return '<tr><td>'+b[0]+'<div class="msg" style="white-space:normal">'+b[3]+' · revisado '+b[4]+'</div></td><td>'+f0(b[1])+'</td><td class="'+(d>=0?'up':'dn')+'">'+(d>=0?'+':'')+d.toFixed(1).replace('.',',')+'%</td><td style="white-space:normal">'+b[2]+'</td></tr>'; }).join('')+'</tbody></table></div></div>'+
-   '<div class="ibox"><div class="lab">Bancos centrais e governos</div>'+INST.cb.map(c=>'<div class="irow2"><b>'+c[0]+'</b><span class="up">'+c[1]+'</span><span class="msg">'+c[2]+'</span></div>').join('')+'</div>'+
+   '<div class="ibox"><div class="lab">Bancos centrais e governos</div>'+INST.cb.map(c=>'<div class="irow2"><b>'+c[0]+'</b><span class="'+(c[3]!=null?c[3]:'up')+'">'+c[1]+'</span><span class="msg">'+c[2]+'</span></div>').join('')+'</div>'+
    '<div class="ibox"><div class="lab">Fundos (ETFs)</div>'+INST.etf.map(c=>'<div class="irow2"><b>'+c[0]+'</b><span class="up">'+c[1]+'</span><span class="msg">'+c[2]+'</span></div>').join('')+'</div>'+
    '<div class="note">Dados de bancos, bancos centrais e ETFs atualizados em '+INST.data+' (fontes: World Gold Council, banco central da China via Kitco, London Gold Exchange). O fluxo da Binance é ao vivo. Projeções de bancos erram com frequência: use como contexto, não como sinal.</div>';
 }
