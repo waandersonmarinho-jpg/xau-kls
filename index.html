@@ -1540,34 +1540,34 @@ function instChart(){
     '<div class="lgs">'+leg+'</div>'+
     '<div class="msg">Linha subindo = instituição comprando; descendo = vendendo. Tracejado = meses sem dado publicado. A China acelerou desde abril e já soma +101 t no ano; os ETFs venderam entre março e junho e voltaram a comprar forte de julho a setembro.</div></div>';
 }
-// volume vendido x comprado (agressão) candle a candle, com média EMA 9
-function sellVol(B){
-  const N=Math.min(60,B.length), seg=B.slice(-N), k=2/10;
-  let es=null,eb=null; const ES=[],EB=[];
-  // aquece a EMA com os candles anteriores
-  const warm=B.slice(Math.max(0,B.length-N-30),B.length-N);
-  warm.concat(seg).forEach((b,i)=>{ const s=b.v-b.tb, u=b.tb; es=es==null?s:es+k*(s-es); eb=eb==null?u:eb+k*(u-eb); if(i>=warm.length){ES.push(es);EB.push(eb);} });
-  const W=360,H=170,pl=34,pr=70,pt=10,pb=20, sv=seg.map(b=>b.v-b.tb);
-  let mx=Math.min(Math.max(...sv),Math.max(...ES,...EB)*2.5)||1; const X=i=>pl+(i+.5)*(W-pl-pr)/N, Y=v=>pt+(1-v/mx)*(H-pt-pb), bw=Math.max(1,(W-pl-pr)/N*.7);
+// fluxo agressivo da Binance só do lado deste app: Venda vê o volume vendido, Compra vê o volume comprado
+function volSide(B,side){
+  const sell=side==='sell', col=sell?'#e5484d':'#30a46c', cls=sell?'dn':'up', nome=sell?'vendido':'comprado';
+  const q=b=>sell?b.v-b.tb:b.tb;
+  const N=Math.min(60,B.length), seg=B.slice(-N), k=2/10, warm=B.slice(Math.max(0,B.length-N-30),B.length-N);
+  let e=null; const E=[]; warm.concat(seg).forEach((b,i)=>{ const x=q(b); e=e==null?x:e+k*(x-e); if(i>=warm.length) E.push(e); });
+  const sv=seg.map(q), V=seg.reduce((a,b)=>a+b.v,0), Q=sv.reduce((a,b)=>a+b,0), pct=V?Q/V*100:50;
+  const W=360,H=170,pl=34,pr=70,pt=10,pb=20;
+  const mx=Math.min(Math.max(...sv),Math.max(...E)*2.5)||1, X=i=>pl+(i+.5)*(W-pl-pr)/N, Y=v=>pt+(1-v/mx)*(H-pt-pb), bw=Math.max(1,(W-pl-pr)/N*.7);
   const nf=v=>v>=1000?(v/1000).toFixed(1).replace('.',',')+'k':v>=10?Math.round(v)+'':v.toFixed(1).replace('.',',');
   let g='';
   [0,.5,1].forEach(f=>{ const v=mx*f; g+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--line)"/><text x="'+(pl-4)+'" y="'+(Y(v)+3)+'" text-anchor="end" font-size="8.5" fill="var(--muted)">'+nf(v)+'</text>'; });
-  sv.forEach((v,i)=>{ v=Math.min(v,mx); g+='<rect x="'+(X(i)-bw/2)+'" y="'+Y(v)+'" width="'+bw+'" height="'+(Y(0)-Y(v))+'" fill="#e5484d" opacity=".28"/>'; });
-  const line=(A,c)=>'<polyline fill="none" stroke="'+c+'" stroke-width="2.2" stroke-linejoin="round" points="'+A.map((v,i)=>X(i).toFixed(1)+','+Y(v).toFixed(1)).join(' ')+'"/>';
-  g+=line(EB,'#30a46c')+line(ES,'#e5484d');
-  const ls=ES[N-1], lb=EB[N-1]; let y1=Y(ls), y2=Y(lb); if(Math.abs(y1-y2)<20){ if(y1<y2) y2=y1+20; else y1=y2+20; }
-  g+='<text x="'+(W-pr+6)+'" y="'+(y1+3)+'" font-size="9.5" font-weight="700" fill="#e5484d">Venda '+nf(ls)+'</text>';
-  g+='<text x="'+(W-pr+6)+'" y="'+(y2+3)+'" font-size="9.5" font-weight="700" fill="#30a46c">Compra '+nf(lb)+'</text>';
+  sv.forEach((v,i)=>{ v=Math.min(v,mx); g+='<rect x="'+(X(i)-bw/2)+'" y="'+Y(v)+'" width="'+bw+'" height="'+(Y(0)-Y(v))+'" fill="'+col+'" opacity=".28"/>'; });
+  g+='<polyline fill="none" stroke="'+col+'" stroke-width="2.2" stroke-linejoin="round" points="'+E.map((v,i)=>X(i).toFixed(1)+','+Y(v).toFixed(1)).join(' ')+'"/>';
+  const last=E[N-1]; g+='<text x="'+(W-pr+6)+'" y="'+(Y(last)+3)+'" font-size="9.5" font-weight="700" fill="'+col+'">'+(sell?'Venda ':'Compra ')+nf(last)+'</text>';
   [0,Math.floor(N/2),N-1].forEach(i=>{ g+='<text x="'+X(i)+'" y="'+(H-6)+'" text-anchor="middle" font-size="8" fill="var(--muted)">'+(S.tf<86400?seg[i].t.slice(-5):seg[i].t.slice(0,5))+'</text>'; });
-  // tendência da venda: EMA agora vs 10 candles atrás
-  const back=ES[Math.max(0,N-11)], ch=back?(ls/back-1)*100:0;
-  const st=ls>lb*1.1?['dn','Vendedores no controle']:lb>ls*1.1?['up','Compradores no controle']:['','Equilíbrio'];
-  const totS=sv.reduce((a,b)=>a+b,0), totB=seg.reduce((a,b)=>a+b.tb,0);
-  return '<div class="ibox"><div class="lab">Volume vendido · EMA 9 · últimos '+N+' candles de '+tfName(S.tf)+'</div>'+
-    '<div class="ival '+st[0]+'">'+st[1]+' <small>venda '+(ch>=0?'subindo ':'caindo ')+(ch>=0?'+':'')+ch.toFixed(0)+'% em 10 candles</small></div>'+
-    '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Volume vendido e comprado por candle">'+g+'</svg>'+
-    '<div class="lgs"><span class="lg"><i style="background:#e5484d"></i><b>Volume vendido</b> <span class="msg">· barras = cada candle; linha = média EMA 9</span></span><span class="lg"><i style="background:#30a46c"></i><b>Volume comprado</b> <span class="msg">· média EMA 9</span></span></div>'+
-    '<div class="msg">No período: <b class="dn">'+nf(totS)+' vendidos</b> × <b class="up">'+nf(totB)+' comprados</b> (em onças, a mercado). Linha vermelha acima da verde e subindo = pressão vendedora, que favorece os sinais de venda.</div></div>';
+  const back=E[Math.max(0,N-11)], ch=back?(last/back-1)*100:0;
+  const st=pct>=55?[cls,sell?'Vendedores no controle':'Compradores no controle']:pct<=45?['',sell?'Venda fraca':'Compra fraca']:['','Equilíbrio'];
+  // grandes volumes só deste lado
+  const avg=V/N, big=[]; for(let i=B.length-1;i>=Math.max(0,B.length-200)&&big.length<6;i--){ const b=B[i], x=q(b); if(b.v>2*avg&&x/b.v>=.55) big.push({t:b.t,p:b.c,x,pc:x/b.v*100}); }
+  return '<div class="ibox"><div class="lab">Volume '+nome+' na Binance · últimos '+N+' candles de '+tfName(S.tf)+'</div>'+
+    '<div class="ival '+st[0]+'">'+pct.toFixed(0)+'% do volume '+(sell?'é venda':'é compra')+' <small>'+st[1]+' · '+(ch>=0?'subindo +':'caindo ')+ch.toFixed(0)+'% em 10 candles</small></div>'+
+    '<div class="meter"><i style="width:'+pct.toFixed(1)+'%;background:'+col+'"></i></div>'+
+    '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Volume '+nome+' por candle">'+g+'</svg>'+
+    '<div class="lgs"><span class="lg"><i style="background:'+col+'"></i><b>Volume '+nome+'</b> <span class="msg">· barras = cada candle; linha = média EMA 9</span></span></div>'+
+    '<div class="msg">No período: <b class="'+cls+'">'+nf(Q)+' onças '+nome+'s a mercado</b>. Linha '+(sell?'vermelha':'verde')+' subindo = mais pressão '+(sell?'vendedora, que favorece os sinais de venda':'compradora, que favorece os sinais de compra')+'.</div>'+
+    '<div class="lab" style="margin-top:12px">Grandes '+(sell?'vendas':'compras')+' (volume mais de 2× a média)</div>'+
+    (big.length?big.map(x=>'<div class="irow"><span>'+x.t+'</span><span class="mono">'+fp(x.p)+'</span><span class="'+cls+'">'+nf(x.x)+' oz · '+x.pc.toFixed(0)+'%</span></div>').join(''):'<div class="msg">Nenhuma grande '+(sell?'venda':'compra')+' nos últimos candles.</div>')+'</div>';
 }
 function renderInst(){
   const box=$('instBox'); if(!box) return;
@@ -1576,21 +1576,12 @@ function renderInst(){
   const up=(med/price-1)*100, f0=v=>Math.round(v).toLocaleString('pt-BR');
   // fluxo de grandes volumes (Binance, candles deste tempo gráfico)
   const hasV=B.length>30&&B[B.length-1].v>0&&B[B.length-1].tb!=null;
-  let flow='';
-  if(hasV){ const N=Math.min(50,B.length), seg=B.slice(-N); let V=0,TB=0; seg.forEach(b=>{V+=b.v;TB+=b.tb;});
-    const buy=TB/V*100, avg=V/N, big=[]; for(let i=B.length-1;i>=Math.max(0,B.length-200)&&big.length<6;i--){ const b=B[i]; if(b.v>2*avg){ const pb=b.tb/b.v*100; big.push({t:b.t,p:b.c,v:b.v,pb}); } }
-    const lab=buy>=55?['up','Compradores dominando']:buy<=45?['dn','Vendedores dominando']:['','Equilíbrio'];
-    flow='<div class="ibox"><div class="lab">Fluxo agressivo na Binance · últimos '+N+' candles de '+tfName(S.tf)+'</div>'+
-      '<div class="ival '+lab[0]+'">'+buy.toFixed(0)+'% compra · '+(100-buy).toFixed(0)+'% venda <small>'+lab[1]+'</small></div>'+
-      '<div class="meter"><i style="width:'+buy.toFixed(1)+'%;background:var(--bull)"></i></div>'+
-      '<div class="lab" style="margin-top:12px">Grandes volumes (mais de 2× a média)</div>'+
-      (big.length?big.map(x=>'<div class="irow"><span>'+x.t+'</span><span class="mono">'+fp(x.p)+'</span><span class="'+(x.pb>=55?'up':x.pb<=45?'dn':'')+'">'+(x.pb>=55?'Grande compra':x.pb<=45?'Grande venda':'Disputa')+' '+x.pb.toFixed(0)+'%</span></div>').join(''):'<div class="msg">Nenhum volume fora do normal nos últimos candles.</div>')+'</div>'; }
-  else flow='<div class="ibox"><div class="lab">Fluxo agressivo na Binance</div><div class="msg">Aparece quando o preço ao vivo da Binance carrega (selo verde no topo).</div></div>';
+  const flow=hasV?volSide(B,'sell'):'<div class="ibox"><div class="lab">Volume na Binance</div><div class="msg">Aparece quando o preço ao vivo da Binance carrega (selo verde no topo).</div></div>';
   const bias=up>5?['up','Instituições esperam alta']:up<-5?['dn','Instituições esperam queda']:['','Instituições neutras'];
   box.innerHTML=
    '<div class="ibox"><div class="lab">Resumo</div><div class="ival '+bias[0]+'">'+bias[1]+'</div>'+
    '<div class="msg">A mediana das projeções dos grandes bancos para o fim de 2026 é <b>US$ '+f0(med)+'</b>, '+(up>=0?'+':'')+up.toFixed(1).replace('.',',')+'% sobre o preço atual (US$ '+f0(price)+'). Bancos centrais, com a China à frente, e ETFs seguem comprando. '+INST.risk+'</div></div>'+
-   flow+(hasV?sellVol(B):'')+instChart()+
+   flow+
    '<div class="ibox"><div class="lab">Projeções dos bancos</div><div style="overflow-x:auto"><table class="dtab itab"><thead><tr><th>Banco</th><th>Alvo</th><th>vs. agora</th><th>Prazo</th></tr></thead><tbody>'+
      INST.banks.map(b=>{ const d=(b[1]/price-1)*100; return '<tr><td>'+b[0]+'<div class="msg" style="white-space:normal">'+b[3]+' · revisado '+b[4]+'</div></td><td>'+f0(b[1])+'</td><td class="'+(d>=0?'up':'dn')+'">'+(d>=0?'+':'')+d.toFixed(1).replace('.',',')+'%</td><td style="white-space:normal">'+b[2]+'</td></tr>'; }).join('')+'</tbody></table></div></div>'+
    '<div class="ibox"><div class="lab">Bancos centrais e governos</div>'+INST.cb.map(c=>'<div class="irow2"><b>'+c[0]+'</b><span class="'+(c[3]!=null?c[3]:'up')+'">'+c[1]+'</span><span class="msg">'+c[2]+'</span></div>').join('')+'</div>'+
@@ -2531,6 +2522,35 @@ function instChart(){
     '<div class="lgs">'+leg+'</div>'+
     '<div class="msg">Linha subindo = instituição comprando; descendo = vendendo. Tracejado = meses sem dado publicado. A China acelerou desde abril e já soma +101 t no ano; os ETFs venderam entre março e junho e voltaram a comprar forte de julho a setembro.</div></div>';
 }
+// fluxo agressivo da Binance só do lado deste app: Venda vê o volume vendido, Compra vê o volume comprado
+function volSide(B,side){
+  const sell=side==='sell', col=sell?'#e5484d':'#30a46c', cls=sell?'dn':'up', nome=sell?'vendido':'comprado';
+  const q=b=>sell?b.v-b.tb:b.tb;
+  const N=Math.min(60,B.length), seg=B.slice(-N), k=2/10, warm=B.slice(Math.max(0,B.length-N-30),B.length-N);
+  let e=null; const E=[]; warm.concat(seg).forEach((b,i)=>{ const x=q(b); e=e==null?x:e+k*(x-e); if(i>=warm.length) E.push(e); });
+  const sv=seg.map(q), V=seg.reduce((a,b)=>a+b.v,0), Q=sv.reduce((a,b)=>a+b,0), pct=V?Q/V*100:50;
+  const W=360,H=170,pl=34,pr=70,pt=10,pb=20;
+  const mx=Math.min(Math.max(...sv),Math.max(...E)*2.5)||1, X=i=>pl+(i+.5)*(W-pl-pr)/N, Y=v=>pt+(1-v/mx)*(H-pt-pb), bw=Math.max(1,(W-pl-pr)/N*.7);
+  const nf=v=>v>=1000?(v/1000).toFixed(1).replace('.',',')+'k':v>=10?Math.round(v)+'':v.toFixed(1).replace('.',',');
+  let g='';
+  [0,.5,1].forEach(f=>{ const v=mx*f; g+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--line)"/><text x="'+(pl-4)+'" y="'+(Y(v)+3)+'" text-anchor="end" font-size="8.5" fill="var(--muted)">'+nf(v)+'</text>'; });
+  sv.forEach((v,i)=>{ v=Math.min(v,mx); g+='<rect x="'+(X(i)-bw/2)+'" y="'+Y(v)+'" width="'+bw+'" height="'+(Y(0)-Y(v))+'" fill="'+col+'" opacity=".28"/>'; });
+  g+='<polyline fill="none" stroke="'+col+'" stroke-width="2.2" stroke-linejoin="round" points="'+E.map((v,i)=>X(i).toFixed(1)+','+Y(v).toFixed(1)).join(' ')+'"/>';
+  const last=E[N-1]; g+='<text x="'+(W-pr+6)+'" y="'+(Y(last)+3)+'" font-size="9.5" font-weight="700" fill="'+col+'">'+(sell?'Venda ':'Compra ')+nf(last)+'</text>';
+  [0,Math.floor(N/2),N-1].forEach(i=>{ g+='<text x="'+X(i)+'" y="'+(H-6)+'" text-anchor="middle" font-size="8" fill="var(--muted)">'+(S.tf<86400?seg[i].t.slice(-5):seg[i].t.slice(0,5))+'</text>'; });
+  const back=E[Math.max(0,N-11)], ch=back?(last/back-1)*100:0;
+  const st=pct>=55?[cls,sell?'Vendedores no controle':'Compradores no controle']:pct<=45?['',sell?'Venda fraca':'Compra fraca']:['','Equilíbrio'];
+  // grandes volumes só deste lado
+  const avg=V/N, big=[]; for(let i=B.length-1;i>=Math.max(0,B.length-200)&&big.length<6;i--){ const b=B[i], x=q(b); if(b.v>2*avg&&x/b.v>=.55) big.push({t:b.t,p:b.c,x,pc:x/b.v*100}); }
+  return '<div class="ibox"><div class="lab">Volume '+nome+' na Binance · últimos '+N+' candles de '+tfName(S.tf)+'</div>'+
+    '<div class="ival '+st[0]+'">'+pct.toFixed(0)+'% do volume '+(sell?'é venda':'é compra')+' <small>'+st[1]+' · '+(ch>=0?'subindo +':'caindo ')+ch.toFixed(0)+'% em 10 candles</small></div>'+
+    '<div class="meter"><i style="width:'+pct.toFixed(1)+'%;background:'+col+'"></i></div>'+
+    '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Volume '+nome+' por candle">'+g+'</svg>'+
+    '<div class="lgs"><span class="lg"><i style="background:'+col+'"></i><b>Volume '+nome+'</b> <span class="msg">· barras = cada candle; linha = média EMA 9</span></span></div>'+
+    '<div class="msg">No período: <b class="'+cls+'">'+nf(Q)+' onças '+nome+'s a mercado</b>. Linha '+(sell?'vermelha':'verde')+' subindo = mais pressão '+(sell?'vendedora, que favorece os sinais de venda':'compradora, que favorece os sinais de compra')+'.</div>'+
+    '<div class="lab" style="margin-top:12px">Grandes '+(sell?'vendas':'compras')+' (volume mais de 2× a média)</div>'+
+    (big.length?big.map(x=>'<div class="irow"><span>'+x.t+'</span><span class="mono">'+fp(x.p)+'</span><span class="'+cls+'">'+nf(x.x)+' oz · '+x.pc.toFixed(0)+'%</span></div>').join(''):'<div class="msg">Nenhuma grande '+(sell?'venda':'compra')+' nos últimos candles.</div>')+'</div>';
+}
 function renderInst(){
   const box=$('instBox'); if(!box) return;
   if(AS.id!=='gold'){ box.innerHTML='<div class="empty">A análise das instituições está disponível para o ouro (GOLD). Selecione GOLD no topo.</div>'; return; }
@@ -2538,16 +2558,7 @@ function renderInst(){
   const up=(med/price-1)*100, f0=v=>Math.round(v).toLocaleString('pt-BR');
   // fluxo de grandes volumes (Binance, candles deste tempo gráfico)
   const hasV=B.length>30&&B[B.length-1].v>0&&B[B.length-1].tb!=null;
-  let flow='';
-  if(hasV){ const N=Math.min(50,B.length), seg=B.slice(-N); let V=0,TB=0; seg.forEach(b=>{V+=b.v;TB+=b.tb;});
-    const buy=TB/V*100, avg=V/N, big=[]; for(let i=B.length-1;i>=Math.max(0,B.length-200)&&big.length<6;i--){ const b=B[i]; if(b.v>2*avg){ const pb=b.tb/b.v*100; big.push({t:b.t,p:b.c,v:b.v,pb}); } }
-    const lab=buy>=55?['up','Compradores dominando']:buy<=45?['dn','Vendedores dominando']:['','Equilíbrio'];
-    flow='<div class="ibox"><div class="lab">Fluxo agressivo na Binance · últimos '+N+' candles de '+tfName(S.tf)+'</div>'+
-      '<div class="ival '+lab[0]+'">'+buy.toFixed(0)+'% compra · '+(100-buy).toFixed(0)+'% venda <small>'+lab[1]+'</small></div>'+
-      '<div class="meter"><i style="width:'+buy.toFixed(1)+'%;background:var(--bull)"></i></div>'+
-      '<div class="lab" style="margin-top:12px">Grandes volumes (mais de 2× a média)</div>'+
-      (big.length?big.map(x=>'<div class="irow"><span>'+x.t+'</span><span class="mono">'+fp(x.p)+'</span><span class="'+(x.pb>=55?'up':x.pb<=45?'dn':'')+'">'+(x.pb>=55?'Grande compra':x.pb<=45?'Grande venda':'Disputa')+' '+x.pb.toFixed(0)+'%</span></div>').join(''):'<div class="msg">Nenhum volume fora do normal nos últimos candles.</div>')+'</div>'; }
-  else flow='<div class="ibox"><div class="lab">Fluxo agressivo na Binance</div><div class="msg">Aparece quando o preço ao vivo da Binance carrega (selo verde no topo).</div></div>';
+  const flow=hasV?volSide(B,'buy'):'<div class="ibox"><div class="lab">Volume na Binance</div><div class="msg">Aparece quando o preço ao vivo da Binance carrega (selo verde no topo).</div></div>';
   const bias=up>5?['up','Instituições esperam alta']:up<-5?['dn','Instituições esperam queda']:['','Instituições neutras'];
   box.innerHTML=
    '<div class="ibox"><div class="lab">Resumo</div><div class="ival '+bias[0]+'">'+bias[1]+'</div>'+
